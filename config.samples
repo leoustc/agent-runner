@@ -13,11 +13,23 @@
 [agent-a]
 INBOX=/srv/agent-a/inbox
 WAITTIME=600
-ROLE="assistant"
+ROLE="Architect"
 CLI="/usr/bin/codex exec --yolo"
 
 [agent-b]
 INBOX=/srv/agent-b/inbox
 WAITTIME=600
-ROLE="assistant"
-CLI="/usr/bin/codex exec --yolo"
+ROLE="Backend Engineer"
+CLI="/usr/bin/claude --print"
+
+[agent-c]
+INBOX=/srv/agent-c/inbox
+WAITTIME=600
+ROLE="Frontend Engineer"
+CLI="/usr/bin/cline"
+
+[agent-d]
+INBOX=/srv/agent-d/inbox
+WAITTIME=600
+ROLE="General Assistant"
+CLI="/usr/bin/pi"
