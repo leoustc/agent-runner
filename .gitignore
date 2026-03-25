@@ -1,0 +1,9 @@
+build/
+dist/
+*.deb
+__pycache__/
+*.pyc
+
+# local runtime or copied config files
+config
+config.sample.local

@@ -1,0 +1,23 @@
+# /etc/agent-runner/config
+#
+# One config file can define multiple agent runners.
+#
+# Multi-agent pattern:
+# - agent A:
+#     inbox: /srv/agent-a/inbox
+# - agent B:
+#     inbox: /srv/agent-b/inbox
+#
+# Each section defines one runner.
+
+[agent-a]
+INBOX=/srv/agent-a/inbox
+WAITTIME=600
+ROLE="assistant"
+CLI="/usr/bin/codex exec --yolo"
+
+[agent-b]
+INBOX=/srv/agent-b/inbox
+WAITTIME=600
+ROLE="assistant"
+CLI="/usr/bin/codex exec --yolo"
