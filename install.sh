@@ -16,6 +16,8 @@ require_cmd() {
 require_cmd curl
 require_cmd python3
 
+PACKAGE_KIND=""
+
 if [ "${EUID}" -ne 0 ]; then
   echo "install.sh: this installer must run as root" >&2
   echo "Try: curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sudo bash" >&2
@@ -24,7 +26,7 @@ fi
 
 if [ ! -r /etc/os-release ]; then
   echo "install.sh: cannot determine operating system" >&2
-  echo "This installer only supports Debian-based systems." >&2
+  echo "This installer only supports Debian-based and RPM-based systems." >&2
   exit 1
 fi
 
@@ -32,21 +34,33 @@ fi
 
 case "${ID:-}" in
   debian|ubuntu|linuxmint|pop|neon|elementary|kali|raspbian)
+    PACKAGE_KIND="deb"
     ;;
-  *)
-    case " ${ID_LIKE:-} " in
-      *" debian "*)
-        ;;
-      *)
-        echo "install.sh: unsupported operating system: ${PRETTY_NAME:-unknown}" >&2
-        echo "This installer only supports Debian-based systems." >&2
-        exit 1
-        ;;
-    esac
+  fedora|rhel|centos|rocky|almalinux|ol|amzn|opensuse*|sles)
+    PACKAGE_KIND="rpm"
     ;;
 esac
 
-require_cmd dpkg
+if [ -z "${PACKAGE_KIND}" ]; then
+  case " ${ID_LIKE:-} " in
+    *" debian "*)
+      PACKAGE_KIND="deb"
+      ;;
+    *" rhel "*|*" fedora "*|*" suse "*)
+      PACKAGE_KIND="rpm"
+      ;;
+    *)
+      echo "install.sh: unsupported operating system: ${PRETTY_NAME:-unknown}" >&2
+      echo "This installer only supports Debian-based and RPM-based systems." >&2
+      exit 1
+      ;;
+  esac
+fi
+
+case "${PACKAGE_KIND}" in
+  deb) require_cmd dpkg ;;
+  rpm) require_cmd rpm ;;
+esac
 
 echo "Fetching latest release metadata for ${REPO}..."
 curl -fsSL \
@@ -54,8 +68,8 @@ curl -fsSL \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   "${API_URL}" > "${TMP_DIR}/release.json"
 
-DEB_URL="$(
-python3 - "${TMP_DIR}/release.json" <<'PY'
+PACKAGE_URL="$(
+python3 - "${TMP_DIR}/release.json" "${PACKAGE_KIND}" <<'PY'
 import json
 import sys
 
@@ -63,33 +77,48 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
     data = json.load(f)
 
 assets = data.get("assets", [])
+package_kind = sys.argv[2]
 preferred = None
 fallback = None
 
 for asset in assets:
     name = asset.get("name", "")
     url = asset.get("browser_download_url", "")
-    if name.endswith("_all.deb"):
-        preferred = url
-        break
-    if name.endswith(".deb") and fallback is None:
-        fallback = url
+    if package_kind == "deb":
+        if name.endswith("_all.deb"):
+            preferred = url
+            break
+        if name.endswith(".deb") and fallback is None:
+            fallback = url
+    elif package_kind == "rpm":
+        if name.endswith(".noarch.rpm"):
+            preferred = url
+            break
+        if name.endswith(".rpm") and fallback is None:
+            fallback = url
 
 print(preferred or fallback or "")
 PY
 )"
 
-if [ -z "${DEB_URL}" ]; then
-  echo "install.sh: no .deb asset found in the latest release" >&2
+if [ -z "${PACKAGE_URL}" ]; then
+  echo "install.sh: no ${PACKAGE_KIND} package asset found in the latest release" >&2
   exit 1
 fi
 
-DEB_FILE="${TMP_DIR}/$(basename "${DEB_URL}")"
+PACKAGE_FILE="${TMP_DIR}/$(basename "${PACKAGE_URL}")"
 
-echo "Downloading $(basename "${DEB_URL}")..."
-curl -fsSL "${DEB_URL}" -o "${DEB_FILE}"
+echo "Downloading $(basename "${PACKAGE_URL}")..."
+curl -fsSL "${PACKAGE_URL}" -o "${PACKAGE_FILE}"
 
-echo "Installing $(basename "${DEB_FILE}")..."
-dpkg -i "${DEB_FILE}"
+echo "Installing $(basename "${PACKAGE_FILE}")..."
+case "${PACKAGE_KIND}" in
+  deb)
+    dpkg -i "${PACKAGE_FILE}"
+    ;;
+  rpm)
+    rpm -Uvh "${PACKAGE_FILE}"
+    ;;
+esac
 
-echo "Installed $(basename "${DEB_FILE}")"
+echo "Installed $(basename "${PACKAGE_FILE}")"

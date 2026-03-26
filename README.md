@@ -40,13 +40,21 @@ Each agent:
   inboxes
 - can be started individually or as part of the whole configured group
 
-## Build
+## Build Debian Package
 
 ```bash
-make build
+make build-deb
 ```
 
-The output package is written to `dist/`.
+The `.deb` package is written to `dist/`.
+
+## Build RPM Package
+
+```bash
+make build-rpm
+```
+
+The `.rpm` package is written to `dist/`.
 
 ## Install
 
@@ -59,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.s
 ## Install Debian Package
 
 ```bash
-make install
+make install-deb
 ```
 
 The package installs:
@@ -72,6 +80,16 @@ The package installs:
 - `/etc/agent-runner/config.sample`
 - `/etc/agent-runner/SKILL.md`
 - `/usr/share/doc/agent-runner/config.samples`
+
+## Install RPM Package
+
+```bash
+make install-rpm
+```
+
+The RPM package installs the same CLI files, config sample, skill file, and
+systemd services. On RPM-based systems the service units are installed under
+`/usr/lib/systemd/system`.
 
 ## Config
 
