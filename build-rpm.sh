@@ -271,12 +271,14 @@ rpmbuild \
   --define "_topdir ${TOPDIR}" \
   -bb "${SPEC_FILE}"
 
-RPM_FILE="${TOPDIR}/RPMS/${RPM_ARCH}/${PKG_NAME}-${VERSION}-1.${RPM_ARCH}.rpm"
+RPM_GLOB="${TOPDIR}/RPMS/${RPM_ARCH}/${PKG_NAME}-${VERSION}-1*.${RPM_ARCH}.rpm"
+mapfile -t RPM_FILES < <(compgen -G "${RPM_GLOB}" || true)
 
-if [ ! -f "${RPM_FILE}" ]; then
-  echo "build-rpm.sh: expected RPM not found: ${RPM_FILE}" >&2
+if [ "${#RPM_FILES[@]}" -ne 1 ]; then
+  echo "build-rpm.sh: expected exactly one RPM matching: ${RPM_GLOB}" >&2
   exit 1
 fi
 
+RPM_FILE="${RPM_FILES[0]}"
 cp "${RPM_FILE}" "${DIST_DIR}/"
 echo "Built ${DIST_DIR}/$(basename "${RPM_FILE}")"
