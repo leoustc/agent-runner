@@ -37,15 +37,15 @@ install -m 0644 "${ROOT_DIR}/README.md" "${SOURCE_DIR}/README.md"
 
 tar -C "${RPM_ROOT}" -czf "${TARBALL}" "${PKG_NAME}-${VERSION}"
 
-cat > "${SPEC_FILE}" <<EOF
-Name: ${PKG_NAME}
-Version: ${VERSION}
+cat > "${SPEC_FILE}" <<'EOF'
+Name: __PKG_NAME__
+Version: __VERSION__
 Release: 1%{?dist}
 Summary: Standalone inbox-based agent runner shell script
 License: MIT
 URL: https://github.com/leoustc/agent-runner
 Source0: %{name}-%{version}.tar.gz
-BuildArch: ${RPM_ARCH}
+BuildArch: __RPM_ARCH__
 Requires: bash, inotify-tools
 
 %description
@@ -257,9 +257,15 @@ fi
 /usr/share/doc/%{name}/config.samples
 
 %changelog
-* Thu Mar 26 2026 li <li@localhost> - ${VERSION}-1
+* Thu Mar 26 2026 li <li@localhost> - __VERSION__-1
 - Build initial RPM package
 EOF
+
+sed -i \
+  -e "s/__PKG_NAME__/${PKG_NAME}/g" \
+  -e "s/__VERSION__/${VERSION}/g" \
+  -e "s/__RPM_ARCH__/${RPM_ARCH}/g" \
+  "${SPEC_FILE}"
 
 rpmbuild \
   --define "_topdir ${TOPDIR}" \

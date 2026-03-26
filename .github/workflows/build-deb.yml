@@ -33,13 +33,15 @@ jobs:
 
   build-rpm:
     runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install RPM Build Tools
-        run: sudo apt-get update && sudo apt-get install -y rpm
+        run: dnf install -y make rpm-build
 
       - name: Build RPM Package
         run: make build-rpm
