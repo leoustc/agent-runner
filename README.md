@@ -48,6 +48,14 @@ make build
 
 The output package is written to `dist/`.
 
+## Install
+
+Install the latest release with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash
+```
+
 ## Install Debian Package
 
 ```bash
