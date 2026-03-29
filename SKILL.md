@@ -48,6 +48,36 @@ Examples:
 - If the other agent is already running, it will pick up the new inbox file by
   itself.
 
+## ADD agent session
+
+- Add a new `[agent-name]` section to `/etc/agent-runner/config`.
+- Set `INBOX` to a writable folder for that agent (must be unique).
+- Set `WAITTIME` in seconds (for example `600`).
+- Set `ROLE` to a clear routing label.
+- Set `GROUP` to the project-style coordination group for this agent (for example `engineer`, `social`, `gpulab`).
+- If `GROUP` is not set, use `core` as the default.
+- When `GROUP` is set, place the agent workspace under:
+  - `/.../<GROUP>/<agent-name>/`
+  - and use `/.../<GROUP>/<agent-name>/inbox` as `INBOX`.
+- Set `CLI` to the command used to run that agent (for example `/usr/bin/codex exec --yolo`).
+- Create the workspace parent directory for the inbox if it does not exist.
+- Reload the runner set with `sudo systemctl reload agent-runner`.
+- Start the specific agent if needed with `sudo systemctl start agent-runner@agent-name`.
+- Confirm startup with `sudo systemctl status agent-runner@agent-name`.
+
+## DELETE agent session
+
+- Stop the agent first:
+  - `sudo systemctl stop agent-runner@agent-name`
+- Remove the agent section from `/etc/agent-runner/config`.
+- Move the workspace to an archive folder instead of deleting it:
+  - `sudo mv /path/to/<GROUP>/<agent-name> /path/to/archive/<GROUP>/<agent-name>_archived`
+- Optionally clear inbox files from the archived workspace after archiving.
+- Reload the runner set so removed agents do not restart:
+  - `sudo systemctl reload agent-runner`
+- Keep the archived workspace unless explicitly told to delete it.
+- Do not delete agent workspaces by default.
+
 ## DO NOT
 
 - Never write to your own inbox.
