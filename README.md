@@ -121,7 +121,7 @@ sudo agent-runner-update
 ## Summary
 
 `agent-runner` provides filesystem-inbox orchestrated local agents with a simple
-systemd service model, shared `/etc/agent-runner` configuration/prompt bundle,
+systemd service model, shared `/etc/agent-runner` configuration and skill bundle,
 and a built-in update path through `agent-runner-update`.
 
 ## Config
@@ -185,6 +185,9 @@ Start one service instance per section name:
 sudo systemctl enable --now agent-runner@agent-a
 sudo systemctl enable --now agent-runner@agent-b
 ```
+
+If a section name contains `/`, replace it with `_` when addressing the instance
+unit. For example: `[social/martin]` maps to `agent-runner@social_martin`.
 
 Or start all configured agents at once:
 

@@ -27,7 +27,11 @@ if [ $# -ne 1 ]; then
   exit 1
 fi
 
-AGENT_NAME="$1"
+decode_agent_name() {
+  echo "${1//_//}"
+}
+
+AGENT_NAME="$(decode_agent_name "$1")"
 CONFIG_FILE="/etc/agent-runner/config"
 CONFIG_SAMPLE="/etc/agent-runner/config.sample"
 
@@ -113,6 +117,10 @@ if [ ! -f "${CONFIG_FILE}" ]; then
   exit 1
 fi
 
+encode_agent_name() {
+  echo "${1//\//_}"
+}
+
 read_agents() {
   while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
     LINE="${RAW_LINE#"${RAW_LINE%%[![:space:]]*}"}"
@@ -132,9 +140,9 @@ fi
 
 for AGENT in "${AGENTS[@]}"; do
   case "${ACTION}" in
-    start) systemctl start "agent-runner@${AGENT}.service" ;;
-    stop) systemctl stop "agent-runner@${AGENT}.service" ;;
-    restart) systemctl restart "agent-runner@${AGENT}.service" ;;
+    start) systemctl start "agent-runner@$(encode_agent_name "${AGENT}").service" ;;
+    stop) systemctl stop "agent-runner@$(encode_agent_name "${AGENT}").service" ;;
+    restart) systemctl restart "agent-runner@$(encode_agent_name "${AGENT}").service" ;;
     *)
       echo "agent-runner-manager: unsupported action: ${ACTION}" >&2
       exit 1
