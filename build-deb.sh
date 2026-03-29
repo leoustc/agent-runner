@@ -196,7 +196,6 @@ EOF
 
 install -m 0644 "${ROOT_DIR}/config.samples" "${BUILD_DIR}/etc/agent-runner/config.sample"
 install -m 0644 "${ROOT_DIR}/SKILL.md" "${BUILD_DIR}/etc/agent-runner/SKILL.md"
-install -m 0644 "${ROOT_DIR}/PROMPT.md" "${BUILD_DIR}/etc/agent-runner/PROMPT.md"
 install -m 0644 "${ROOT_DIR}/config.samples" "${BUILD_DIR}/usr/share/doc/agent-runner/config.samples"
 
 cat > "${BUILD_DIR}/DEBIAN/control" <<EOF

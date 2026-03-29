@@ -86,7 +86,6 @@ The package installs:
 - `/lib/systemd/system/agent-runner@.service`
 - `/etc/agent-runner/config.sample`
 - `/etc/agent-runner/SKILL.md`
-- `/etc/agent-runner/PROMPT.md`
 - `/usr/share/doc/agent-runner/config.samples`
 
 ## Install RPM Package
@@ -148,14 +147,6 @@ This runs the same installer URL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash
-```
-
-The runner also uses `/etc/agent-runner/PROMPT.md` as the startup prompt for every
-invocation. Edit this file to adjust global default behavior:
-
-```bash
-sudo cp /etc/agent-runner/PROMPT.md /etc/agent-runner/PROMPT.md.bak
-sudo editor /etc/agent-runner/PROMPT.md
 ```
 
 Example config:
