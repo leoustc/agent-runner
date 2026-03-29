@@ -34,6 +34,7 @@ install -m 0644 "${ROOT_DIR}/config.samples" "${SOURCE_DIR}/config.samples"
 install -m 0644 "${ROOT_DIR}/SKILL.md" "${SOURCE_DIR}/SKILL.md"
 install -m 0644 "${ROOT_DIR}/LICENSE" "${SOURCE_DIR}/LICENSE"
 install -m 0644 "${ROOT_DIR}/README.md" "${SOURCE_DIR}/README.md"
+install -m 0644 "${ROOT_DIR}/PROMPT.md" "${SOURCE_DIR}/PROMPT.md"
 
 tar -C "${RPM_ROOT}" -czf "${TARBALL}" "${PKG_NAME}-${VERSION}"
 
@@ -230,6 +231,7 @@ UNIT
 
 install -m 0644 config.samples "%{buildroot}/etc/agent-runner/config.sample"
 install -m 0644 SKILL.md "%{buildroot}/etc/agent-runner/SKILL.md"
+install -m 0644 PROMPT.md "%{buildroot}/etc/agent-runner/PROMPT.md"
 install -m 0644 config.samples "%{buildroot}/usr/share/doc/%{name}/config.samples"
 install -m 0644 README.md "%{buildroot}/usr/share/doc/%{name}/README.md"
 install -m 0644 LICENSE "%{buildroot}/usr/share/doc/%{name}/LICENSE"
@@ -254,6 +256,7 @@ fi
 /usr/lib/systemd/system/agent-runner@.service
 /etc/agent-runner/config.sample
 /etc/agent-runner/SKILL.md
+/etc/agent-runner/PROMPT.md
 /usr/share/doc/%{name}/config.samples
 
 %changelog

@@ -79,6 +79,7 @@ The package installs:
 - `/lib/systemd/system/agent-runner@.service`
 - `/etc/agent-runner/config.sample`
 - `/etc/agent-runner/SKILL.md`
+- `/etc/agent-runner/PROMPT.md`
 - `/usr/share/doc/agent-runner/config.samples`
 
 ## Install RPM Package
@@ -100,6 +101,14 @@ Before starting the service, copy the sample file first:
 ```bash
 sudo cp /etc/agent-runner/config.sample /etc/agent-runner/config
 sudo editor /etc/agent-runner/config
+```
+
+The runner also uses `/etc/agent-runner/PROMPT.md` as the startup prompt for every
+invocation. Edit this file to adjust global default behavior:
+
+```bash
+sudo cp /etc/agent-runner/PROMPT.md /etc/agent-runner/PROMPT.md.bak
+sudo editor /etc/agent-runner/PROMPT.md
 ```
 
 Example config:
