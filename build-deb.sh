@@ -144,6 +144,20 @@ done
 EOF
 chmod 0755 "${BUILD_DIR}/usr/local/bin/agent-runner-manager"
 
+cat > "${BUILD_DIR}/usr/local/bin/agent-runner-update" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${EUID}" -ne 0 ]; then
+  echo "agent-runner-update: must run as root" >&2
+  echo "Try: curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash" >&2
+  exit 1
+fi
+
+curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | bash
+EOF
+chmod 0755 "${BUILD_DIR}/usr/local/bin/agent-runner-update"
+
 cat > "${BUILD_DIR}/lib/systemd/system/agent-runner.service" <<'EOF'
 [Unit]
 Description=Agent Runner (all configured agents)
@@ -191,7 +205,7 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: ${ARCH}
-Depends: bash, inotify-tools
+Depends: bash, inotify-tools, curl
 Maintainer: li
 Description: Standalone inbox-based agent runner shell script
  A small Debian package that installs the agent-runner CLI and systemd template service

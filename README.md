@@ -64,6 +64,12 @@ Install the latest release with:
 curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash
 ```
 
+Or, if you keep this repo locally, run:
+
+```bash
+make update
+```
+
 ## Install Debian Package
 
 ```bash
@@ -75,6 +81,7 @@ The package installs:
 - `/usr/local/bin/agent-runner`
 - `/usr/local/bin/agent-runner-service`
 - `/usr/local/bin/agent-runner-manager`
+- `/usr/local/bin/agent-runner-update`
 - `/lib/systemd/system/agent-runner.service`
 - `/lib/systemd/system/agent-runner@.service`
 - `/etc/agent-runner/config.sample`
@@ -92,6 +99,32 @@ The RPM package installs the same CLI files, config sample, skill file, and
 systemd services. On RPM-based systems the service units are installed under
 `/usr/lib/systemd/system`.
 
+## Installed CLI Commands
+
+Installed commands:
+
+- `agent-runner <inbox-path> <waittime-seconds> [agent-cli ...]`  
+  Start one watcher loop for an inbox and run the configured agent CLI with the installed prompt.
+- `agent-runner-service <agent-name>`  
+  Start a single named agent from its section in `/etc/agent-runner/config`.
+- `agent-runner-manager <start|stop|restart>`  
+  Manage all configured agent instances in batch.
+- `agent-runner-update`  
+  Reinstall/update to the latest release using the remote install script.
+
+```bash
+agent-runner --help
+agent-runner-service manager
+agent-runner-manager start
+sudo agent-runner-update
+```
+
+## Summary
+
+`agent-runner` provides filesystem-inbox orchestrated local agents with a simple
+systemd service model, shared `/etc/agent-runner` configuration/prompt bundle,
+and a built-in update path through `agent-runner-update`.
+
 ## Config
 
 The config file can define multiple local agents in one file.
@@ -101,6 +134,20 @@ Before starting the service, copy the sample file first:
 ```bash
 sudo cp /etc/agent-runner/config.sample /etc/agent-runner/config
 sudo editor /etc/agent-runner/config
+```
+
+## Update Command
+
+Install the latest release again using the package updater:
+
+```bash
+sudo agent-runner-update
+```
+
+This runs the same installer URL:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash
 ```
 
 The runner also uses `/etc/agent-runner/PROMPT.md` as the startup prompt for every

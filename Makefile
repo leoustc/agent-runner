@@ -5,7 +5,7 @@ VERSION := $(shell tr -d '[:space:]' < VERSION)
 DEB_FILE := dist/$(PACKAGE_NAME)_$(VERSION)_all.deb
 RPM_FILE_GLOB := dist/$(PACKAGE_NAME)-$(VERSION)-1*.noarch.rpm
 
-.PHONY: build-deb build-rpm install-deb install-rpm release clean
+.PHONY: build-deb build-rpm install-deb install-rpm update release clean
 
 build-deb:
 	./build-deb.sh
@@ -18,6 +18,9 @@ install-deb: build-deb
 
 install-rpm: build-rpm
 	sudo rpm -Uvh $(RPM_FILE_GLOB)
+
+update:
+	curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash
 	
 release:
 	git add .

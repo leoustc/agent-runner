@@ -47,7 +47,7 @@ License: MIT
 URL: https://github.com/leoustc/agent-runner
 Source0: %{name}-%{version}.tar.gz
 BuildArch: __RPM_ARCH__
-Requires: bash, inotify-tools
+Requires: bash, inotify-tools, curl
 
 %description
 A small RPM package that installs the agent-runner CLI and systemd template
@@ -193,6 +193,20 @@ done
 SCRIPT
 chmod 0755 "%{buildroot}/usr/local/bin/agent-runner-manager"
 
+cat > "%{buildroot}/usr/local/bin/agent-runner-update" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${EUID}" -ne 0 ]; then
+  echo "agent-runner-update: must run as root" >&2
+  echo "Try: curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash" >&2
+  exit 1
+fi
+
+curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | bash
+SCRIPT
+chmod 0755 "%{buildroot}/usr/local/bin/agent-runner-update"
+
 cat > "%{buildroot}/usr/lib/systemd/system/agent-runner.service" <<'UNIT'
 [Unit]
 Description=Agent Runner (all configured agents)
@@ -252,6 +266,7 @@ fi
 /usr/local/bin/agent-runner
 /usr/local/bin/agent-runner-service
 /usr/local/bin/agent-runner-manager
+/usr/local/bin/agent-runner-update
 /usr/lib/systemd/system/agent-runner.service
 /usr/lib/systemd/system/agent-runner@.service
 /etc/agent-runner/config.sample
