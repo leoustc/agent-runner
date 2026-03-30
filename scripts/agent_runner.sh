@@ -1,14 +1,39 @@
 #!/usr/bin/env bash
 # Agent Runner Script
 #
-# The runner watches an inbox directory and invokes the configured agent CLI.
-# Runtime behavior and coordination guidance come from:
-# - /etc/agent-runner/SKILL.md (how agents should operate)
-# - built-in default prompt text
-# Command-line args:
-#   <inbox-path> <waittime-seconds> [agent-cli ...]
-#   Optional --role can be passed by the service wrapper for downstream prompts.
-# Single-instance execution is protected by a workspace LOCK file.
+# Inputs:
+#   1. inbox path
+#   2. waittime in seconds
+#   3. optional --role <role>
+#   4. optional agent CLI command
+#
+# Usage:
+#   ./agent_runner.sh ./inbox 600
+#   ./agent_runner.sh ./inbox 600 --role "Architect"
+#   ./agent_runner.sh ./inbox 600 /usr/bin/codex exec --yolo
+#   ./agent_runner.sh ./inbox 600 --role "Architect" /usr/bin/codex exec --yolo
+#
+# Additional Runner:
+#   If you want to create another agent runner, create another inbox folder first
+#   and then start this script with that inbox path.
+#
+# Hints:
+#   - The workspace is the parent directory of the inbox path.
+#   - The inbox is the place where new message files arrive.
+#
+# Workflow:
+#   1. Resolve the workspace from the parent directory of the inbox path.
+#   2. Prepare the workspace runtime folders:
+#      logs, processed, memory, notes, and context.
+#   3. Create a built-in runner prompt file in the workspace.
+#   4. Start the agent CLI with that prompt.
+#   5. Block on inbox file activity with inotifywait.
+#   6. When a new inbox file arrives or a write completes, print the inbox file list.
+#   7. Loop and run the agent again.
+#
+# Concurrency:
+#   - Only one runner instance should be active per workspace.
+#   - A LOCK file with the current PID is used to prevent duplicates.
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
@@ -88,39 +113,39 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-build_prompt() {
-  cat <<EOF
+PROMPT_FILE="${WORKSPACE}/.runner_prompt.md"
+cat > "${PROMPT_FILE}" <<EOF
 ---
 runner: agent runner
 workspace: ${WORKSPACE}
 inbox: ${INBOX_PATH}
 waittime: ${WAITTIME}
-role: ${ROLE:-unknown}
+role: ${ROLE}
 ---
 
-Default Agent Runner Prompt
+# Runner Prompt
 
 You are online in the workspace.
 State: work
 
 ## Startup
 
-- Your configured role for this runner is `${ROLE:-unknown}`.
+- Your configured role for this runner is `${ROLE}`.
 - Read AGENTS.md in the workspace first if it exists.
 - Read ROLE.md in the workspace first if it exists.
 - Read INSTRUCTION.md in the workspace first if it exists.
 - Treat INSTRUCTION.md as the main operating instruction for this workspace.
-- If you want to distribute work to other local agent runners, follow /etc/agent-runner/SKILL.md.
+- If you want to distribute work to other local agent runners, follow `/etc/agent-runner/SKILL.md`.
 
 ## Work
 
 - Explicitly check the messages inside the inbox folder `${INBOX_PATH}`.
 - Read each inbox file as JSON.
 - Read each inbox message carefully.
-- Follow the instructions in INSTRUCTION.md and inside the inbox content.
-- If the inbox JSON contains latest-user-prompt, use it as the latest original user prompt.
-- If the inbox JSON contains backend-llm-reply or backend-llm-instruction, check those fields carefully before deciding what to do next.
-- When they exist, focus first on latest-user-prompt and backend-llm-reply.
+- Follow the instructions in `INSTRUCTION.md` and inside the inbox content.
+- If the inbox JSON contains `latest-user-prompt`, use it as the latest original user prompt.
+- If the inbox JSON contains `backend-llm-reply` or `backend-llm-instruction`, check those fields carefully before deciding what to do next.
+- When they exist, focus first on `latest-user-prompt` and `backend-llm-reply`.
 - If the task looks complicated or long, send a quick reply about your plan or next action first so the user knows you have started working on it.
 - If the task is short and straightforward, you do not need that extra start reply.
 - Update your memory and notes if the inbox content asks for it.
@@ -131,10 +156,9 @@ State: work
 - Decide how to reply based on the inbox content and the current project context.
 - You may choose to reply after each step is finished.
 - If a reply is needed, try to reply and find the reply method from the message content.
-- Use `openclaw-message-cli` skill to send replies when the message content requires an outbound reply.
-- When using shell commands like `openclaw message send`, treat backticks, `$`, and `!` in message bodies as unsafe shell characters. Prefer plain text, or use a single-quoted heredoc/body pattern so a successful send is not mistaken for a shell failure.
-- If task is complex, send a quick plan update first.
-- For simple questions, reply directly and clearly.
+- Use `openclaw-message-cli` to send replies when the message content requires an outbound reply.
+- For simple questions, reply directly and clearly. You do not need step-by-step thinking for simple replies.
+- Reply like a helpful human assistant. Do not force steps or summaries when they are not needed.
 - If `backend-llm-reply` is already good enough, you do not need to send another reply.
 - If the inbox content does not specify a note format, maintain a daily notes file and an important memory notes file.
 - You do not need to update notes, memory, or context files for every new message.
@@ -147,8 +171,8 @@ State: work
 - While waiting, keep checking the inbox messages as well.
 - Only when the inbox is empty should you wait up to ${WAITTIME} seconds for a new inbox message.
 - If no new inbox message arrives during that waiting period, you may stop.
+- Move the precessed inbox messages to the processed folder. Keep the inbox folder clean.
 EOF
-}
 
 if ! command -v inotifywait >/dev/null 2>&1; then
   echo "agent_runner.sh: inotifywait is required. "
@@ -160,7 +184,7 @@ fi
 while true; do
   (
     cd "${WORKSPACE}"
-    build_prompt | "${AGENT_CMD[@]}"
+    "${AGENT_CMD[@]}" < "${PROMPT_FILE}"
   )
   inotifywait --quiet --timeout "${WAITTIME}" --event create,close_write "${INBOX_PATH}" >/dev/null 2>&1 || exit 0
   echo "file change: ${INBOX_PATH}"
