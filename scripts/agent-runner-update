@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${EUID}" -ne 0 ]; then
+  echo "agent-runner-update: must run as root" >&2
+  echo "Try: curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash" >&2
+  exit 1
+fi
+
+curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | bash

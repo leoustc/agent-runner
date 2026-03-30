@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Agent Runner Script
+# Agent Runner Worker Script
 #
 # Inputs:
 #   1. inbox path
@@ -8,10 +8,10 @@
 #   4. optional agent CLI command
 #
 # Usage:
-#   ./agent_runner.sh ./inbox 600
-#   ./agent_runner.sh ./inbox 600 --role "Architect"
-#   ./agent_runner.sh ./inbox 600 /usr/bin/codex exec --yolo
-#   ./agent_runner.sh ./inbox 600 --role "Architect" /usr/bin/codex exec --yolo
+#   ./agent-runner-worker.sh ./inbox 600
+#   ./agent-runner-worker.sh ./inbox 600 --role "Architect"
+#   ./agent-runner-worker.sh ./inbox 600 /usr/bin/codex exec --yolo
+#   ./agent-runner-worker.sh ./inbox 600 --role "Architect" /usr/bin/codex exec --yolo
 #
 # Additional Runner:
 #   If you want to create another agent runner, create another inbox folder first
@@ -34,7 +34,8 @@
 # Concurrency:
 #   - Only one runner instance should be active per workspace.
 #   - A LOCK file with the current PID is used to prevent duplicates.
-set -euo pipefail
+set -u
+set -o pipefail
 
 if [ $# -lt 2 ]; then
   echo "usage: $0 <inbox-path> <waittime-seconds> [agent-cli ...]" >&2
@@ -46,7 +47,7 @@ WAITTIME="$2"
 shift 2 || true
 
 if ! [[ "${WAITTIME}" =~ ^[0-9]+$ ]] || [ "${WAITTIME}" -le 0 ]; then
-  echo "agent_runner.sh: waittime must be a positive integer" >&2
+  echo "agent-runner-worker.sh: waittime must be a positive integer" >&2
   exit 1
 fi
 
@@ -67,13 +68,24 @@ INBOX_PATH="$(cd "${INBOX_ARG}" && pwd)"
 WORKSPACE="$(cd "${INBOX_PATH}/.." && pwd)"
 
 mkdir -p "${INBOX_PATH}" \
-  "${WORKSPACE}/logs" \
   "${WORKSPACE}/processed" \
   "${WORKSPACE}/memory" \
   "${WORKSPACE}/notes" \
   "${WORKSPACE}/context"
 
 LOCK_FILE="${WORKSPACE}/LOCK"
+LOG_FILE="${WORKSPACE}/.agent-runner.log"
+
+if [ -n "${AGENT_NAME:-}" ]; then
+  SAFE_AGENT_NAME="${AGENT_NAME//\//_}"
+  SAFE_AGENT_NAME="${SAFE_AGENT_NAME// /_}"
+else
+  SAFE_AGENT_NAME="$(basename "${WORKSPACE}")"
+fi
+
+if mkdir -p /var/log/agent-runner 2>/dev/null; then
+  LOG_FILE="/var/log/agent-runner/${SAFE_AGENT_NAME}.log"
+fi
 
 read_lock_pid() {
   if [ ! -f "${LOCK_FILE}" ]; then
@@ -97,14 +109,14 @@ release_lock() {
 existing_pid="$(read_lock_pid || true)"
 if [ -n "${existing_pid}" ]; then
   if is_pid_running "${existing_pid}"; then
-    echo "agent_runner.sh: running already for ${WORKSPACE} with pid ${existing_pid}"
+    echo "agent-runner-worker.sh: running already for ${WORKSPACE} with pid ${existing_pid}"
     exit 0
   fi
   rm -f "${LOCK_FILE}"
 fi
 
 if ! ( set -o noclobber; echo "$$" > "${LOCK_FILE}" ) 2>/dev/null; then
-  echo "agent_runner.sh: failed to create lock file ${LOCK_FILE}" >&2
+  echo "agent-runner-worker.sh: failed to create lock file ${LOCK_FILE}" >&2
   exit 1
 fi
 
@@ -175,18 +187,61 @@ State: work
 EOF
 
 if ! command -v inotifywait >/dev/null 2>&1; then
-  echo "agent_runner.sh: inotifywait is required. "
+  echo "agent-runner-worker.sh: inotifywait is required. "
   echo "On Ubuntu or Debian: "
   echo "    sudo apt-get update && sudo apt-get install -y inotify-tools" 
-  exit 1
+  HAS_INOTIFYWAIT=false
+else
+  HAS_INOTIFYWAIT=true
 fi
 
+run_agent_once() {
+  local command_status=0
+  local command_output
+  local lower_output
+
+  command_output="$(
+    cd "${WORKSPACE}" && {
+      "${AGENT_CMD[@]}" < "${PROMPT_FILE}"
+    } 2>&1
+  )"
+  command_status=$?
+
+  {
+    echo "----- $(date -u +\"%Y-%m-%dT%H:%M:%SZ\") -----"
+    echo "${command_output}"
+  } >> "${LOG_FILE}" 2>/dev/null || {
+    echo "agent-runner-worker.sh: failed to write log to ${LOG_FILE}, using fallback ${WORKSPACE}/.agent-runner.log" >&2
+    echo "----- $(date -u +\"%Y-%m-%dT%H:%M:%SZ\") -----" >> "${WORKSPACE}/.agent-runner.log"
+    echo "${command_output}" >> "${WORKSPACE}/.agent-runner.log"
+  }
+
+  if [ "${command_status}" -ne 0 ]; then
+    lower_output="${command_output,,}"
+    echo "agent-runner-worker.sh: agent command failed for ${WORKSPACE}" >&2
+    echo "agent-runner-worker.sh: command: ${AGENT_CMD[*]}" >&2
+    echo "agent-runner-worker.sh: status: ${command_status}" >&2
+    echo "agent-runner-worker.sh: output: ${command_output}" >&2
+
+    if [[ "${lower_output}" == *"usage limit"* || "${lower_output}" == *"usage limits"* || "${lower_output}" == *"rate limit"* || "${lower_output}" == *"quota"* ]]; then
+      echo "agent-runner-worker.sh: usage limit detected, sleeping ${WAITTIME}s before retry" >&2
+      sleep "${WAITTIME}"
+    fi
+    return 1
+  fi
+}
+
 while true; do
-  (
-    cd "${WORKSPACE}"
-    "${AGENT_CMD[@]}" < "${PROMPT_FILE}"
-  )
-  inotifywait --quiet --timeout "${WAITTIME}" --event create,close_write "${INBOX_PATH}" >/dev/null 2>&1 || exit 0
-  echo "file change: ${INBOX_PATH}"
-  ls -1 "${INBOX_PATH}"
+  run_agent_once || true
+  if [ "${HAS_INOTIFYWAIT}" != true ]; then
+    sleep "${WAITTIME}"
+    continue
+  fi
+  if inotifywait --quiet --timeout "${WAITTIME}" --event create,close_write "${INBOX_PATH}" >/dev/null 2>&1; then
+    echo "file change: ${INBOX_PATH}"
+    ls -1 "${INBOX_PATH}" || true
+  elif [ $? -ne 1 ]; then
+    echo "agent-runner-worker.sh: inotifywait failed on ${INBOX_PATH}, code $?" >&2
+    sleep 2
+  fi
 done

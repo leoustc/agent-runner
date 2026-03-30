@@ -108,6 +108,8 @@ Installed commands:
   Start a single named agent from its section in `/etc/agent-runner/config`.
 - `agent-runner-manager <start|stop|restart>`  
   Manage all configured agent instances in batch.
+- `agent-runner-status`  
+  Show each configured agent and the systemd unit status.
 - `agent-runner-update`  
   Reinstall/update to the latest release using the remote install script.
 
@@ -115,6 +117,7 @@ Installed commands:
 agent-runner --help
 agent-runner-service manager
 agent-runner-manager start
+agent-runner-status
 sudo agent-runner-update
 ```
 

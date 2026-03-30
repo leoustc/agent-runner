@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WIDE=true
+if [ "${1:-}" = "--narrow" ]; then
+  WIDE=false
+  shift
+fi
+
+CONFIG_FILE="/etc/agent-runner/config"
+CONFIG_SAMPLE="/etc/agent-runner/config.sample"
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "agent-runner-status: systemctl not found" >&2
+  exit 1
+fi
+
+if [ ! -f "${CONFIG_FILE}" ]; then
+  echo "agent-runner-status: config file not found: ${CONFIG_FILE}" >&2
+  echo "Copy ${CONFIG_SAMPLE} to ${CONFIG_FILE} and update it first." >&2
+  exit 1
+fi
+
+encode_agent_name() {
+  echo "${1//\//_}"
+}
+
+read_agents() {
+  while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
+    LINE="${RAW_LINE#"${RAW_LINE%%[![:space:]]*}"}"
+    LINE="${LINE%"${LINE##*[![:space:]]}"}"
+    if [[ "${LINE}" =~ ^\[(.+)\]$ ]]; then
+      echo "${BASH_REMATCH[1]}"
+    fi
+  done < "${CONFIG_FILE}"
+}
+
+mapfile -t AGENTS < <(read_agents)
+
+if [ "${#AGENTS[@]}" -eq 0 ]; then
+  echo "agent-runner-status: no agent sections found in ${CONFIG_FILE}" >&2
+  exit 1
+fi
+
+if [ "${WIDE}" = true ]; then
+  printf "%s\t%s\t%s\t%s\t%s\n" "INDEX" "AGENT" "UNIT" "ACTIVE" "SUB"
+else
+  printf "%-6s\t%-16s\t%-40s\t%-10s\t%s\n" "INDEX" "AGENT" "UNIT" "ACTIVE" "SUB"
+fi
+
+i=1
+for AGENT in "${AGENTS[@]}"; do
+  UNIT="agent-runner@$(encode_agent_name "${AGENT}").service"
+  ACTIVE="$(systemctl is-active "${UNIT}" 2>/dev/null || true)"
+  SUB="$(systemctl show -p SubState --value "${UNIT}" 2>/dev/null || true)"
+  if [ "${WIDE}" = true ]; then
+    printf "%d\t%s\t%s\t%s\t%s\n" "${i}" "${AGENT}" "${UNIT}" "${ACTIVE:-unknown}" "${SUB:-unknown}"
+  else
+    printf "%-6d\t%-16s\t%-40s\t%-10s\t%s\n" "${i}" "${AGENT}" "${UNIT}" "${ACTIVE:-unknown}" "${SUB:-unknown}"
+  fi
+  i=$((i + 1))
+done

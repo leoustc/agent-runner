@@ -17,154 +17,13 @@ mkdir -p \
   "${BUILD_DIR}/usr/share/doc/agent-runner" \
   "${DIST_DIR}"
 
-install -m 0755 "${ROOT_DIR}/scripts/agent_runner.sh" "${BUILD_DIR}/usr/local/bin/agent-runner"
-cat > "${BUILD_DIR}/usr/local/bin/agent-runner-service" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [ $# -ne 1 ]; then
-  echo "usage: $0 <agent-name>" >&2
-  exit 1
-fi
-
-decode_agent_name() {
-  echo "${1//_//}"
-}
-
-AGENT_NAME="$(decode_agent_name "$1")"
-CONFIG_FILE="/etc/agent-runner/config"
-CONFIG_SAMPLE="/etc/agent-runner/config.sample"
-
-if [ ! -f "${CONFIG_FILE}" ]; then
-  echo "agent-runner-service: config file not found: ${CONFIG_FILE}" >&2
-  echo "Copy ${CONFIG_SAMPLE} to ${CONFIG_FILE} and update it first." >&2
-  exit 1
-fi
-
-SECTION_FOUND=0
-CURRENT_SECTION=""
-INBOX=""
-WAITTIME=""
-ROLE=""
-CLI=""
-
-while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
-  LINE="${RAW_LINE#"${RAW_LINE%%[![:space:]]*}"}"
-  LINE="${LINE%"${LINE##*[![:space:]]}"}"
-  if [ -z "${LINE}" ] || [[ "${LINE}" == \#* ]] || [[ "${LINE}" == \;* ]]; then
-    continue
-  fi
-  if [[ "${LINE}" =~ ^\[(.+)\]$ ]]; then
-    CURRENT_SECTION="${BASH_REMATCH[1]}"
-    if [ "${CURRENT_SECTION}" = "${AGENT_NAME}" ]; then
-      SECTION_FOUND=1
-    fi
-    continue
-  fi
-  if [ "${CURRENT_SECTION}" != "${AGENT_NAME}" ]; then
-    continue
-  fi
-  KEY="${LINE%%=*}"
-  VALUE="${LINE#*=}"
-  KEY="${KEY%"${KEY##*[![:space:]]}"}"
-  VALUE="${VALUE#"${VALUE%%[![:space:]]*}"}"
-  VALUE="${VALUE%"${VALUE##*[![:space:]]}"}"
-  if [ "${#VALUE}" -ge 2 ] && { [ "${VALUE:0:1}" = '"' ] && [ "${VALUE: -1}" = '"' ]; }; then
-    VALUE="${VALUE:1:${#VALUE}-2}"
-  fi
-  case "${KEY}" in
-    INBOX) INBOX="${VALUE}" ;;
-    WAITTIME) WAITTIME="${VALUE}" ;;
-    ROLE) ROLE="${VALUE}" ;;
-    CLI) CLI="${VALUE}" ;;
-  esac
-done < "${CONFIG_FILE}"
-
-if [ "${SECTION_FOUND}" -ne 1 ]; then
-  echo "agent-runner-service: section [${AGENT_NAME}] not found in ${CONFIG_FILE}" >&2
-  exit 1
-fi
-
-if [ -z "${INBOX}" ] || [ -z "${WAITTIME}" ] || [ -z "${CLI}" ]; then
-  echo "agent-runner-service: section [${AGENT_NAME}] must define INBOX, WAITTIME, and CLI" >&2
-  exit 1
-fi
-
-eval "set -- ${CLI}"
-if [ -n "${ROLE}" ]; then
-  exec /usr/local/bin/agent-runner "${INBOX}" "${WAITTIME}" --role "${ROLE}" "$@"
-fi
-exec /usr/local/bin/agent-runner "${INBOX}" "${WAITTIME}" "$@"
-EOF
-chmod 0755 "${BUILD_DIR}/usr/local/bin/agent-runner-service"
-
-cat > "${BUILD_DIR}/usr/local/bin/agent-runner-manager" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [ $# -ne 1 ]; then
-  echo "usage: $0 <start|stop|restart>" >&2
-  exit 1
-fi
-
-ACTION="$1"
-CONFIG_FILE="/etc/agent-runner/config"
-CONFIG_SAMPLE="/etc/agent-runner/config.sample"
-
-if [ ! -f "${CONFIG_FILE}" ]; then
-  echo "agent-runner-manager: config file not found: ${CONFIG_FILE}" >&2
-  echo "Copy ${CONFIG_SAMPLE} to ${CONFIG_FILE} and update it first." >&2
-  exit 1
-fi
-
-encode_agent_name() {
-  echo "${1//\//_}"
-}
-
-read_agents() {
-  while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
-    LINE="${RAW_LINE#"${RAW_LINE%%[![:space:]]*}"}"
-    LINE="${LINE%"${LINE##*[![:space:]]}"}"
-    if [[ "${LINE}" =~ ^\[(.+)\]$ ]]; then
-      echo "${BASH_REMATCH[1]}"
-    fi
-  done < "${CONFIG_FILE}"
-}
-
-mapfile -t AGENTS < <(read_agents)
-
-if [ "${#AGENTS[@]}" -eq 0 ]; then
-  echo "agent-runner-manager: no agent sections found in ${CONFIG_FILE}" >&2
-  exit 1
-fi
-
-for AGENT in "${AGENTS[@]}"; do
-  case "${ACTION}" in
-    start) systemctl start "agent-runner@$(encode_agent_name "${AGENT}").service" ;;
-    stop) systemctl stop "agent-runner@$(encode_agent_name "${AGENT}").service" ;;
-    restart) systemctl restart "agent-runner@$(encode_agent_name "${AGENT}").service" ;;
-    *)
-      echo "agent-runner-manager: unsupported action: ${ACTION}" >&2
-      exit 1
-      ;;
-  esac
-done
-EOF
-chmod 0755 "${BUILD_DIR}/usr/local/bin/agent-runner-manager"
-
-cat > "${BUILD_DIR}/usr/local/bin/agent-runner-update" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [ "${EUID}" -ne 0 ]; then
-  echo "agent-runner-update: must run as root" >&2
-  echo "Try: curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | sudo bash" >&2
-  exit 1
-fi
-
-curl -fsSL https://raw.githubusercontent.com/leoustc/agent-runner/main/install.sh | bash
-EOF
-chmod 0755 "${BUILD_DIR}/usr/local/bin/agent-runner-update"
+install -m 0755 "${ROOT_DIR}/scripts/agent-runner-worker.sh" "${BUILD_DIR}/usr/local/bin/agent-runner"
+install -m 0755 \
+  "${ROOT_DIR}/scripts/agent-runner-service" \
+  "${ROOT_DIR}/scripts/agent-runner-manager" \
+  "${ROOT_DIR}/scripts/agent-runner-update" \
+  "${ROOT_DIR}/scripts/agent-runner-status" \
+  "${BUILD_DIR}/usr/local/bin/"
 
 cat > "${BUILD_DIR}/lib/systemd/system/agent-runner.service" <<'EOF'
 [Unit]
@@ -193,7 +52,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/local/bin/agent-runner-service %i
 WorkingDirectory=/
-Restart=always
+Restart=on-failure
 RestartSec=5
 KillMode=control-group
 TimeoutStopSec=10

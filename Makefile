@@ -32,3 +32,9 @@ release:
 
 clean:
 	rm -rf build dist
+
+debug: build-deb
+	scp dist/agent-runner_$(VERSION)_all.deb TeamClawBot:/root/agent-runner_$(VERSION)_all.deb
+	ssh -t TeamClawBot dpkg -i /root/agent-runner_$(VERSION)_all.deb
+	ssh -t TeamClawBot systemctl restart agent-runner
+	ssh -t TeamClawBot agent-runner-status
