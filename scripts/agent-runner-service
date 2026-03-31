@@ -26,6 +26,8 @@ INBOX=""
 WAITTIME=""
 ROLE=""
 CLI=""
+TEAM=""
+WORKSPACE=""
 
 while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
   LINE="${RAW_LINE#"${RAW_LINE%%[![:space:]]*}"}"
@@ -56,6 +58,8 @@ while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
     WAITTIME) WAITTIME="${VALUE}" ;;
     ROLE) ROLE="${VALUE}" ;;
     CLI) CLI="${VALUE}" ;;
+    TEAM) TEAM="${VALUE}" ;;
+    WORKSPACE) WORKSPACE="${VALUE}" ;;
   esac
 done < "${CONFIG_FILE}"
 
@@ -64,13 +68,26 @@ if [ "${SECTION_FOUND}" -ne 1 ]; then
   exit 1
 fi
 
+if [ -n "${WORKSPACE}" ] && ! mkdir -p "${WORKSPACE}"; then
+  echo "agent-runner-service: cannot create workspace directory ${WORKSPACE}" >&2
+  exit 1
+fi
+
 if [ -z "${INBOX}" ] || [ -z "${WAITTIME}" ] || [ -z "${CLI}" ]; then
   echo "agent-runner-service: section [${AGENT_NAME}] must define INBOX, WAITTIME, and CLI" >&2
   exit 1
 fi
 
+if [ -z "${TEAM}" ]; then
+  TEAM="default"
+fi
+
+if [ -z "${WORKSPACE}" ]; then
+  WORKSPACE=""
+fi
+
 eval "set -- ${CLI}"
 if [ -n "${ROLE}" ]; then
-  AGENT_NAME="${AGENT_NAME}" exec /usr/local/bin/agent-runner "${INBOX}" "${WAITTIME}" --role "${ROLE}" "$@"
+  AGENT_NAME="${AGENT_NAME}" WORKSPACE_OVERRIDE="${WORKSPACE}" TEAM_NAME="${TEAM}" exec /usr/local/bin/agent-runner "${INBOX}" "${WAITTIME}" --role "${ROLE}" "$@"
 fi
-AGENT_NAME="${AGENT_NAME}" exec /usr/local/bin/agent-runner "${INBOX}" "${WAITTIME}" "$@"
+AGENT_NAME="${AGENT_NAME}" WORKSPACE_OVERRIDE="${WORKSPACE}" TEAM_NAME="${TEAM}" exec /usr/local/bin/agent-runner "${INBOX}" "${WAITTIME}" "$@"

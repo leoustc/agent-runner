@@ -18,7 +18,8 @@
 #   and then start this script with that inbox path.
 #
 # Hints:
-#   - The workspace is the parent directory of the inbox path.
+#   - The workspace defaults to the parent directory of the inbox path,
+#     unless WORKSPACE_OVERRIDE is provided by the launcher.
 #   - The inbox is the place where new message files arrive.
 #
 # Workflow:
@@ -45,6 +46,7 @@ fi
 INBOX_ARG="$1"
 WAITTIME="$2"
 shift 2 || true
+TEAM="${TEAM_NAME:-default}"
 
 if ! [[ "${WAITTIME}" =~ ^[0-9]+$ ]] || [ "${WAITTIME}" -le 0 ]; then
   echo "agent-runner-worker.sh: waittime must be a positive integer" >&2
@@ -65,7 +67,18 @@ fi
 
 mkdir -p "${INBOX_ARG}"
 INBOX_PATH="$(cd "${INBOX_ARG}" && pwd)"
-WORKSPACE="$(cd "${INBOX_PATH}/.." && pwd)"
+if [ -n "${WORKSPACE_OVERRIDE:-}" ]; then
+  WORKSPACE_INPUT="${WORKSPACE_OVERRIDE}"
+  if [ ! -d "${WORKSPACE_INPUT}" ]; then
+    mkdir -p "${WORKSPACE_INPUT}" || {
+      echo "agent-runner-worker.sh: cannot create workspace ${WORKSPACE_INPUT}" >&2
+      exit 1
+    }
+  fi
+  WORKSPACE="$(cd "${WORKSPACE_INPUT}" && pwd)"
+else
+  WORKSPACE="$(cd "${INBOX_PATH}/.." && pwd)"
+fi
 
 mkdir -p "${INBOX_PATH}" \
   "${WORKSPACE}/processed" \
@@ -131,59 +144,25 @@ cat > "${PROMPT_FILE}" <<EOF
 runner: agent runner
 workspace: ${WORKSPACE}
 inbox: ${INBOX_PATH}
+team: ${TEAM}
 waittime: ${WAITTIME}
 role: ${ROLE}
 ---
 
 # Runner Prompt
 
-You are online in the workspace.
-State: work
+You are an agent runner in the workspace `${WORKSPACE}` with role `${ROLE}` and team `${TEAM}`.
 
-## Startup
+## Operational Steps
+- Read `AGENTS.md`, `ROLE.md`, and `INSTRUCTION.md` first if present.
+- Read new inbox files in batches, then process and reply one-by-one in order.
+- Send one reply when context is ready. Keep messages direct and concise.
+- If a message does not specify a reply destination, send replies to manager/master.
+- Recheck the inbox after each item before waiting.
+- If no inbox activity for `${WAITTIME}` seconds, you may stop.
+- After finishing an item, move it out of inbox to `${WORKSPACE}/processed/` if available.
 
-- Your configured role for this runner is `${ROLE}`.
-- Read AGENTS.md in the workspace first if it exists.
-- Read ROLE.md in the workspace first if it exists.
-- Read INSTRUCTION.md in the workspace first if it exists.
-- Treat INSTRUCTION.md as the main operating instruction for this workspace.
-- If you want to distribute work to other local agent runners, follow `/etc/agent-runner/SKILL.md`.
-
-## Work
-
-- Explicitly check the messages inside the inbox folder `${INBOX_PATH}`.
-- Read each inbox file as JSON.
-- Read each inbox message carefully.
-- Follow the instructions in `INSTRUCTION.md` and inside the inbox content.
-- If the inbox JSON contains `latest-user-prompt`, use it as the latest original user prompt.
-- If the inbox JSON contains `backend-llm-reply` or `backend-llm-instruction`, check those fields carefully before deciding what to do next.
-- When they exist, focus first on `latest-user-prompt` and `backend-llm-reply`.
-- If the task looks complicated or long, send a quick reply about your plan or next action first so the user knows you have started working on it.
-- If the task is short and straightforward, you do not need that extra start reply.
-- Update your memory and notes if the inbox content asks for it.
-- Figure out from the inbox content what the task is.
-- For related messages, you may batch them together in time order and reply together.
-- When batching related messages, give the latest content the most weight.
-- Break complex or long tasks into clear steps.
-- Decide how to reply based on the inbox content and the current project context.
-- You may choose to reply after each step is finished.
-- If a reply is needed, try to reply and find the reply method from the message content.
-- Use `openclaw-message-cli` to send replies when the message content requires an outbound reply.
-- For simple questions, reply directly and clearly. You do not need step-by-step thinking for simple replies.
-- Reply like a helpful human assistant. Do not force steps or summaries when they are not needed.
-- If `backend-llm-reply` is already good enough, you do not need to send another reply.
-- If the inbox content does not specify a note format, maintain a daily notes file and an important memory notes file.
-- You do not need to update notes, memory, or context files for every new message.
-- You may wait for a while and do that file update work later, especially when you are about to quit after the wait period.
-- If the inbox message asks you to send messages to other people, still reply to the original user about the status as well.
-- You may send multiple replies over time when that better fits the task or message flow.
-- After finishing one inbox item, immediately check the inbox again before doing any long wait.
-- If you are still thinking and an interim update would be useful to the user, you may send multiple replies over time in a natural, professional way.
-- If you are working on a long task and a new inbox message arrives asking about status, you may reply that you are still working on it, that you need more time, or report your current status and say you will update the user again soon.
-- While waiting, keep checking the inbox messages as well.
-- Only when the inbox is empty should you wait up to ${WAITTIME} seconds for a new inbox message.
-- If no new inbox message arrives during that waiting period, you may stop.
-- Move the precessed inbox messages to the processed folder. Keep the inbox folder clean.
+Use `/etc/agent-runner/SKILL.md` for delegation and context conventions.
 EOF
 
 if ! command -v inotifywait >/dev/null 2>&1; then
@@ -231,12 +210,57 @@ run_agent_once() {
   fi
 }
 
+snapshot_inbox_files() {
+  local snapshot_file="$1"
+  (
+    cd "${INBOX_PATH}" && \
+      find . -maxdepth 1 -type f -not -name ".runner_prompt.md" -print0
+  ) > "${snapshot_file}"
+}
+
+cleanup_inbox_snapshot() {
+  local snapshot_file="$1"
+  local processed_dir="${WORKSPACE}/processed"
+  local file_path
+
+  if [ ! -f "${snapshot_file}" ]; then
+    return 0
+  fi
+
+  while IFS= read -r -d '' file_path; do
+    [ -z "${file_path}" ] && continue
+    if [ "${file_path}" = "." ]; then
+      continue
+    fi
+    local src_file="${INBOX_PATH}/${file_path#./}"
+    if [ -f "${src_file}" ]; then
+      if [ -d "${processed_dir}" ]; then
+        mv -- "${src_file}" "${processed_dir}/" 2>/dev/null || rm -f -- "${src_file}"
+      else
+        rm -f -- "${src_file}"
+      fi
+    fi
+  done < "${snapshot_file}"
+}
+
 while true; do
-  run_agent_once || true
+  INBOX_SNAPSHOT="$(mktemp)"
+  snapshot_inbox_files "${INBOX_SNAPSHOT}"
+
+  run_exit=0
+  run_agent_once || run_exit=$?
+  if [ "${run_exit}" -eq 0 ]; then
+    cleanup_inbox_snapshot "${INBOX_SNAPSHOT}"
+  else
+    echo "agent-runner-worker.sh: agent run failed; keeping inbox files for retry: ${INBOX_SNAPSHOT}" >&2
+  fi
+  rm -f -- "${INBOX_SNAPSHOT}"
+
   if [ "${HAS_INOTIFYWAIT}" != true ]; then
     sleep "${WAITTIME}"
     continue
   fi
+
   if inotifywait --quiet --timeout "${WAITTIME}" --event create,close_write "${INBOX_PATH}" >/dev/null 2>&1; then
     echo "file change: ${INBOX_PATH}"
     ls -1 "${INBOX_PATH}" || true

@@ -9,27 +9,45 @@
 #     inbox: /srv/agent-b/inbox
 #
 # Each section defines one runner.
+# TEAM defaults to "default" when omitted.
+# WORKSPACE defaults to the parent folder of INBOX when omitted.
+
+[master]
+WORKSPACE=/srv/agent-a
+INBOX=/srv/agent-a/inbox
+WAITTIME=600
+ROLE="Manager"
+TEAM=default
+CLI="/usr/bin/codex exec --yolo"
 
 [agent-a]
 INBOX=/srv/agent-a/inbox
 WAITTIME=600
 ROLE="Architect"
+TEAM=default
+WORKSPACE=/srv/agent-a
 CLI="/usr/bin/codex exec --yolo"
 
 [agent-b]
 INBOX=/srv/agent-b/inbox
+TEAM=default
 WAITTIME=600
 ROLE="Backend Engineer"
+WORKSPACE=/srv/agent-b
 CLI="/usr/bin/claude --print"
 
 [agent-c]
 INBOX=/srv/agent-c/inbox
+TEAM=default
 WAITTIME=600
 ROLE="Frontend Engineer"
+WORKSPACE=/srv/agent-c
 CLI="/usr/bin/cline"
 
 [agent-d]
 INBOX=/srv/agent-d/inbox
+TEAM=default
 WAITTIME=600
 ROLE="General Assistant"
+WORKSPACE=/srv/agent-d
 CLI="/usr/bin/pi"

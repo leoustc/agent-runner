@@ -25,17 +25,61 @@ encode_agent_name() {
   echo "${1//\//_}"
 }
 
-read_agents() {
-  while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
-    LINE="${RAW_LINE#"${RAW_LINE%%[![:space:]]*}"}"
-    LINE="${LINE%"${LINE##*[![:space:]]}"}"
-    if [[ "${LINE}" =~ ^\[(.+)\]$ ]]; then
-      echo "${BASH_REMATCH[1]}"
-    fi
-  done < "${CONFIG_FILE}"
+trim() {
+  local line="$1"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  printf "%s" "${line}"
 }
 
-mapfile -t AGENTS < <(read_agents)
+read_sections() {
+  local line
+  local key
+  local value
+  local current_section=""
+  local current_team="default"
+  declare -ag AGENTS=()
+  declare -ag TEAMS=()
+
+  while IFS= read -r RAW_LINE || [ -n "${RAW_LINE}" ]; do
+    line="$(trim "${RAW_LINE}")"
+    if [ -z "${line}" ] || [[ "${line}" == \#* ]] || [[ "${line}" == \;* ]]; then
+      continue
+    fi
+    if [[ "${line}" =~ ^\[(.+)\]$ ]]; then
+      if [ -n "${current_section}" ]; then
+        AGENTS+=("${current_section}")
+        TEAMS+=("${current_team:-default}")
+      fi
+      current_section="${BASH_REMATCH[1]}"
+      current_team="default"
+      continue
+    fi
+
+    if [ -z "${current_section}" ]; then
+      continue
+    fi
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [ "${#value}" -ge 2 ] && [ "${value:0:1}" = '"' ] && [ "${value: -1}" = '"' ]; then
+      value="${value:1:${#value}-2}"
+    fi
+    case "${key}" in
+      TEAM) current_team="${value}" ;;
+    esac
+  done < "${CONFIG_FILE}"
+
+  if [ -n "${current_section}" ]; then
+    AGENTS+=("${current_section}")
+    TEAMS+=("${current_team:-default}")
+  fi
+}
+
+read_sections
 
 if [ "${#AGENTS[@]}" -eq 0 ]; then
   echo "agent-runner-status: no agent sections found in ${CONFIG_FILE}" >&2
@@ -43,20 +87,23 @@ if [ "${#AGENTS[@]}" -eq 0 ]; then
 fi
 
 if [ "${WIDE}" = true ]; then
-  printf "%s\t%s\t%s\t%s\t%s\n" "INDEX" "AGENT" "UNIT" "ACTIVE" "SUB"
+  printf "%s\t%s\t%s\t%s\t%s\t%s\n" "INDEX" "TEAM" "AGENT" "ACTIVE" "SUB" "UNIT"
 else
-  printf "%-6s\t%-16s\t%-40s\t%-10s\t%s\n" "INDEX" "AGENT" "UNIT" "ACTIVE" "SUB"
+  printf "%-6s\t%-14s\t%-16s\t%-10s\t%-10s\t%-40s\n" "INDEX" "TEAM" "AGENT" "ACTIVE" "SUB" "UNIT"
 fi
 
 i=1
-for AGENT in "${AGENTS[@]}"; do
+for idx in "${!AGENTS[@]}"; do
+  AGENT="${AGENTS[$idx]}"
+  TEAM="${TEAMS[$idx]:-default}"
+  [ -z "${TEAM}" ] && TEAM="default"
   UNIT="agent-runner@$(encode_agent_name "${AGENT}").service"
   ACTIVE="$(systemctl is-active "${UNIT}" 2>/dev/null || true)"
   SUB="$(systemctl show -p SubState --value "${UNIT}" 2>/dev/null || true)"
   if [ "${WIDE}" = true ]; then
-    printf "%d\t%s\t%s\t%s\t%s\n" "${i}" "${AGENT}" "${UNIT}" "${ACTIVE:-unknown}" "${SUB:-unknown}"
+    printf "%d\t%s\t%s\t%s\t%s\t%s\n" "${i}" "${TEAM}" "${AGENT}" "${ACTIVE:-unknown}" "${SUB:-unknown}" "${UNIT}"
   else
-    printf "%-6d\t%-16s\t%-40s\t%-10s\t%s\n" "${i}" "${AGENT}" "${UNIT}" "${ACTIVE:-unknown}" "${SUB:-unknown}"
+    printf "%-6d\t%-14s\t%-16s\t%-10s\t%-10s\t%-40s\n" "${i}" "${TEAM}" "${AGENT}" "${ACTIVE:-unknown}" "${SUB:-unknown}" "${UNIT}"
   fi
   i=$((i + 1))
 done
