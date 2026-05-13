@@ -139,7 +139,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 PROMPT_FILE="${WORKSPACE}/.runner_prompt.md"
-cat > "${PROMPT_FILE}" <<EOF
+
+write_prompt_file() {
+  local snapshot_file="$1"
+  local file_path
+  local src_file
+  local has_files=false
+
+  cat > "${PROMPT_FILE}" <<EOF
 ---
 runner: agent runner
 workspace: ${WORKSPACE}
@@ -151,19 +158,47 @@ role: ${ROLE}
 
 # Runner Prompt
 
-You are an agent runner in the workspace `${WORKSPACE}` with role `${ROLE}` and team `${TEAM}`.
+You are an agent runner in the workspace \`${WORKSPACE}\` with role \`${ROLE}\` and team \`${TEAM}\`.
 
 ## Operational Steps
-- Read `AGENTS.md`, `ROLE.md`, and `INSTRUCTION.md` first if present.
+- Read \`AGENTS.md\`, \`ROLE.md\`, and \`INSTRUCTION.md\` first if present.
 - Read new inbox files in batches, then process and reply one-by-one in order.
 - Send one reply when context is ready. Keep messages direct and concise.
 - If a message does not specify a reply destination, send replies to manager/master.
 - Recheck the inbox after each item before waiting.
-- If no inbox activity for `${WAITTIME}` seconds, you may stop.
-- After finishing an item, move it out of inbox to `${WORKSPACE}/processed/` if available.
+- If no inbox activity for \`${WAITTIME}\` seconds, you may stop.
+- After finishing an item, move it out of inbox to \`${WORKSPACE}/processed/\` if available.
 
-Use `/etc/agent-runner/SKILL.md` for delegation and context conventions.
+Use \`/etc/agent-runner/SKILL.md\` for delegation and context conventions.
+
+## Current Inbox
+Process the inbox messages below now. For each message, print a direct text reply.
+Do not only acknowledge the prompt; answer the message content.
 EOF
+
+  if [ -f "${snapshot_file}" ]; then
+    while IFS= read -r -d '' file_path; do
+      [ -z "${file_path}" ] && continue
+      [ "${file_path}" = "." ] && continue
+      src_file="${INBOX_PATH}/${file_path#./}"
+      [ -f "${src_file}" ] || continue
+      has_files=true
+      {
+        printf "\n### %s\n\n" "${file_path#./}"
+        printf '```text\n'
+        cat -- "${src_file}"
+        printf '\n```\n'
+      } >> "${PROMPT_FILE}"
+    done < "${snapshot_file}"
+  fi
+
+  if [ "${has_files}" != true ]; then
+    cat >> "${PROMPT_FILE}" <<'EOF'
+
+No current inbox files are present. Say that the inbox is empty and wait for the next task.
+EOF
+  fi
+}
 
 if ! command -v inotifywait >/dev/null 2>&1; then
   echo "agent-runner-worker.sh: inotifywait is required. "
@@ -176,36 +211,20 @@ fi
 
 run_agent_once() {
   local command_status=0
-  local command_output
-  local lower_output
 
-  command_output="$(
+  echo "----- $(date -u +\"%Y-%m-%dT%H:%M:%SZ\") -----"
+
+  (
     cd "${WORKSPACE}" && {
       "${AGENT_CMD[@]}" < "${PROMPT_FILE}"
-    } 2>&1
-  )"
+    }
+  )
   command_status=$?
 
-  {
-    echo "----- $(date -u +\"%Y-%m-%dT%H:%M:%SZ\") -----"
-    echo "${command_output}"
-  } >> "${LOG_FILE}" 2>/dev/null || {
-    echo "agent-runner-worker.sh: failed to write log to ${LOG_FILE}, using fallback ${WORKSPACE}/.agent-runner.log" >&2
-    echo "----- $(date -u +\"%Y-%m-%dT%H:%M:%SZ\") -----" >> "${WORKSPACE}/.agent-runner.log"
-    echo "${command_output}" >> "${WORKSPACE}/.agent-runner.log"
-  }
-
   if [ "${command_status}" -ne 0 ]; then
-    lower_output="${command_output,,}"
     echo "agent-runner-worker.sh: agent command failed for ${WORKSPACE}" >&2
     echo "agent-runner-worker.sh: command: ${AGENT_CMD[*]}" >&2
     echo "agent-runner-worker.sh: status: ${command_status}" >&2
-    echo "agent-runner-worker.sh: output: ${command_output}" >&2
-
-    if [[ "${lower_output}" == *"usage limit"* || "${lower_output}" == *"usage limits"* || "${lower_output}" == *"rate limit"* || "${lower_output}" == *"quota"* ]]; then
-      echo "agent-runner-worker.sh: usage limit detected, sleeping ${WAITTIME}s before retry" >&2
-      sleep "${WAITTIME}"
-    fi
     return 1
   fi
 }
@@ -216,6 +235,13 @@ snapshot_inbox_files() {
     cd "${INBOX_PATH}" && \
       find . -maxdepth 1 -type f -not -name ".runner_prompt.md" -print0
   ) > "${snapshot_file}"
+}
+
+inbox_has_files() {
+  (
+    cd "${INBOX_PATH}" && \
+      find . -maxdepth 1 -type f -not -name ".runner_prompt.md" -print -quit
+  ) | grep -q .
 }
 
 cleanup_inbox_snapshot() {
@@ -246,6 +272,7 @@ cleanup_inbox_snapshot() {
 while true; do
   INBOX_SNAPSHOT="$(mktemp)"
   snapshot_inbox_files "${INBOX_SNAPSHOT}"
+  write_prompt_file "${INBOX_SNAPSHOT}"
 
   run_exit=0
   run_agent_once || run_exit=$?
@@ -255,6 +282,10 @@ while true; do
     echo "agent-runner-worker.sh: agent run failed; keeping inbox files for retry: ${INBOX_SNAPSHOT}" >&2
   fi
   rm -f -- "${INBOX_SNAPSHOT}"
+
+  if inbox_has_files; then
+    continue
+  fi
 
   if [ "${HAS_INOTIFYWAIT}" != true ]; then
     sleep "${WAITTIME}"

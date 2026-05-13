@@ -2,11 +2,11 @@
 #
 # One config file can define multiple agent runners.
 #
-# Multi-agent pattern:
-# - agent A:
-#     inbox: /srv/agent-a/inbox
-# - agent B:
-#     inbox: /srv/agent-b/inbox
+# Example pattern:
+# - master:
+#     uses Pi against an Ollama model configured in /root/.pi/agent/models.json
+# - architect:
+#     uses Codex CLI against the model provider configured in /root/.codex/config.toml
 #
 # Each section defines one runner.
 # TEAM defaults to "default" when omitted.
@@ -18,36 +18,12 @@ INBOX=/srv/agent-a/inbox
 WAITTIME=600
 ROLE="Manager"
 TEAM=default
-CLI="/usr/bin/codex exec --yolo"
+CLI="/usr/bin/pi --provider ollama --model gemma4 -p @/srv/agent-a/.runner_prompt.md"
 
-[agent-a]
-INBOX=/srv/agent-a/inbox
+[architect]
+WORKSPACE=/srv/agent-architect
+INBOX=/srv/agent-architect/inbox
 WAITTIME=600
 ROLE="Architect"
 TEAM=default
-WORKSPACE=/srv/agent-a
-CLI="/usr/bin/codex exec --yolo"
-
-[agent-b]
-INBOX=/srv/agent-b/inbox
-TEAM=default
-WAITTIME=600
-ROLE="Backend Engineer"
-WORKSPACE=/srv/agent-b
-CLI="/usr/bin/claude --print"
-
-[agent-c]
-INBOX=/srv/agent-c/inbox
-TEAM=default
-WAITTIME=600
-ROLE="Frontend Engineer"
-WORKSPACE=/srv/agent-c
-CLI="/usr/bin/cline"
-
-[agent-d]
-INBOX=/srv/agent-d/inbox
-TEAM=default
-WAITTIME=600
-ROLE="General Assistant"
-WORKSPACE=/srv/agent-d
-CLI="/usr/bin/pi"
+CLI="/usr/bin/codex --sandbox danger-full-access --ask-for-approval never exec --skip-git-repo-check"

@@ -88,6 +88,18 @@ The package installs:
 - `/etc/agent-runner/SKILL.md`
 - `/usr/share/doc/agent-runner/config.samples`
 
+Each `agent-runner@...` systemd instance runs inside a GNU `screen` session named
+`agent-runner-<instance>`, so you can inspect an active runner with:
+
+```bash
+sudo screen -ls
+sudo screen -r agent-runner-agent-a
+```
+
+The same screen output is logged at `/var/log/agent-runner/<instance>.screen.log`.
+Optional agent environment variables can be placed in `/etc/agent-runner/env`;
+systemd loads that file before starting each runner.
+
 ## Install RPM Package
 
 ```bash
@@ -289,3 +301,4 @@ sudo systemctl status agent-runner@agent-a
 Runtime dependency:
 
 - `inotify-tools`
+- `screen`

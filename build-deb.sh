@@ -50,7 +50,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agent-runner-service %i
+EnvironmentFile=-/etc/agent-runner/env
+ExecStartPre=/bin/mkdir -p /var/log/agent-runner
+ExecStart=/usr/bin/screen -L -Logfile /var/log/agent-runner/%i.screen.log -D -m -S agent-runner-%i /usr/local/bin/agent-runner-service %i
+ExecStop=/usr/bin/screen -S agent-runner-%i -X quit
 WorkingDirectory=/
 Restart=on-failure
 RestartSec=5
@@ -71,7 +74,7 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: ${ARCH}
-Depends: bash, inotify-tools, curl
+Depends: bash, inotify-tools, curl, screen
 Maintainer: li
 Description: Standalone inbox-based agent runner shell script
  A small Debian package that installs the agent-runner CLI and systemd template service
